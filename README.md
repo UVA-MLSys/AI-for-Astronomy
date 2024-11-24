@@ -6,7 +6,7 @@ This proposes a novel **Cloud-based Astronomy Inference (CAI)** framework for da
 
 #### Fig 1: CAI framework design on AWS State Machine.
 
-<img src='./aws/figures/cai workflow.jpg' width='50%'/>
+![cai workflow](./aws/figures/cai%20workflow.jpg)
 </div>
 
 A brief description of the workflow:
@@ -75,7 +75,7 @@ Create a state machine that contains the following Lambda functions.
 
 #### Fig: AWS State Machine.
 
-<img src='./aws/figures/design.jpg' width='50%'/>
+![Design](./aws/figures/design.jpg)
 </div>
 
 1. Initialize: Create a lambda function (e.g. `data-parallel-init`) with the [lambda_initializer](./aws/lambda/lambda_initializer.py). 
@@ -97,15 +97,15 @@ Create a state machine that contains the following Lambda functions.
 
 #### Step 1: Go to the AWS State Machine. Click Start execution.
 
-<img src='./aws/figures/start execution.jpg' width='80%'/>
+![start execution](./aws/figures/start%20execution.jpg)
 
 #### Step 2: Copy the input payload. Modify as needed.
 
-<img src='./aws/figures/pass input.jpg' width='80%'/>
+![Pass input](./aws/figures/pass%20input.jpg)
 
 #### Step 3: Once succeeds, check the result paths for output.
 
-<img src='./aws/figures/execution succeeded.jpg' width='80%'/>
+![execution succeeded](./aws/figures/execution%20succeeded.jpg)
 
 </div>
 
@@ -131,14 +131,14 @@ Please check the [result_stats_adjusted.csv](./aws/results/result_stats_adjusted
 
 #### Fig 2: Dataset size vs Inference time for each partition
 
-<img src='./aws/figures/cai_inference_time.jpg' width='70%'/>
+![](./aws/figures/cai_inference_time.jpg)
 </div>
 
 <div align="center" style="overflow-x:auto;">
 
 #### Fig 3: Data size vs Throughput for each partition
 
-<img src='./aws/figures/cai_throughput.jpg' width='70%'/>
+![](./aws/figures/cai_throughput.jpg)
 </div>
 
 ### Varying batch size
@@ -149,14 +149,15 @@ We use the 1GB data and change batch size by [32, 64, 128, 256, 512]. The result
 
 #### Fig 4: Batch size vs Inference Time
 
-<img src='./aws/figures/batch_varying_inference_time.jpg' width='70%' style="{align:center}"/>
+![](./aws/figures/batch_varying_inference_time.jpg)
 </div>
 
 <div align="center" style="overflow-x:auto;">
 
 #### Fig 5: Batch size vs Throughput
 
-<img src='./aws/figures/batch_varying_throughput.jpg' width='70%'/>
+![](./aws/figures/batch_varying_throughput.jpg)
+
 </div>
 
 </details>
