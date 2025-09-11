@@ -6,7 +6,10 @@ import os, time
 from inference import get_cpu_info, get_ram_info, load_data, load_model, data_loader, get_process_memory_mb
 
 # Define the inference function with profiling for both CPU and GPU memory usage
-def inference(model, dataloader, real_redshift, device, batch_size):
+def inference(
+    model, dataloader, num_samples, 
+    device, batch_size, disable_progress=False
+):
     total_time = 0.0  # Initialize total time for execution
     num_batches = 0   # Initialize number of batches
     total_data_bits = 0  # Initialize total data bits processed
@@ -27,8 +30,6 @@ def inference(model, dataloader, real_redshift, device, batch_size):
             image_bits = image.element_size() * image.nelement() * 8  # Convert bytes to bits
             magnitude_bits = magnitude.element_size() * magnitude.nelement() * 8  # Convert bytes to bits
             total_data_bits += image_bits + magnitude_bits  # Add data bits for this batch
-
-    num_samples = len(real_redshift)
     
     # Extract total CPU and GPU time
     total_time = time.perf_counter() - start 
@@ -65,10 +66,11 @@ def engine(args):
             continue
             
         data = load_data(data_path, args.device)
+        dataloader = data_loader(data, args.batch_size, num_workers=args.num_workers)
         
         file_stats = inference(
-            model, data, device=args.device,
-            batch_size=args.batch_size, num_workers=args.num_workers,
+            model, dataloader, len(data[:][2]), device=args.device, 
+            batch_size=args.batch_size,
             disable_progress=args.disable_progress
         )
         all_job_stats.append({
@@ -81,11 +83,6 @@ def engine(args):
     os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
     with open(args.output_file, 'w') as f:
         json.dump(all_job_stats, f, indent=4)
-    
-    data = load_data(args.data_path, args.device)
-    dataloader = data_loader(data, args.batch_size)
-    
-    inference(model, dataloader, data[:][2].to('cpu'), device = args.device, batch_size = args.batch_size)
 
     
 # Pathes and other inference hyperparameters can be adjusted below
