@@ -17,7 +17,10 @@ def inference(
     start = time.perf_counter()
     # Initialize the profiler to track both CPU and GPU activities and memory usage
     with torch.no_grad():
-        for i, data in tqdm(enumerate(dataloader), total=len(dataloader)):
+        for i, data in tqdm(
+            enumerate(dataloader), total=len(dataloader), 
+            disable=disable_progress
+        ):
             image = data[0].to(device)  # Image to device
             magnitude = data[1].to(device)  # Magnitude to device
 
@@ -54,10 +57,12 @@ def inference(
 #This is the engine module for invoking and calling various modules
 def engine(args):
     model = load_model(args.model_path, args.device)
+    available_files = os.listdir(args.data_dir)
     
     all_job_stats = []
     for file_idx in args.file_indices:
-        data_path = os.path.join(args.data_dir, f'{file_idx}.pt')
+        filename = available_files[file_idx // len(available_files)]
+        data_path =  os.path.join(args.data_dir, filename)
         print(f"--- Processing file index: {file_idx} at path: {data_path} ---")
         
         # Check if file exists
@@ -91,7 +96,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=512)
     
     # NEW: Directory containing the .pt files
-    parser.add_argument('--data_dir', type=str, default='../../../raw_data/')
+    parser.add_argument('--data_dir', type=str, default='../../../raw_data/100MB')
     
     # NEW: List of file indices to process
     parser.add_argument('--file_indices', type=int, nargs='+', required=True, help='Space-separated list of file indices to process.')
