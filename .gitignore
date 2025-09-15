@@ -2,6 +2,8 @@ __pycache__
 .ipynb_checkpoints
 .DS_Store
 raw_data
+*.out
+job_*.json
 
 # Ignore JSON files with only digits in filenames from the 'aws' folder and its subfolders
 aws/**/[0-9]*.json

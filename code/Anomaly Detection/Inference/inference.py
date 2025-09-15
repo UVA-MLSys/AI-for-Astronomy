@@ -44,8 +44,11 @@ def load_model(model_path, device):
     return model.module.eval()
 
 #Use DataLoader for iterating over batches
-def data_loader(data, batch_size):
-    return DataLoader(data, batch_size = batch_size, drop_last = False)   #Drop samples out of the batch size
+def data_loader(data, batch_size, num_workers=None):
+    return DataLoader(
+        data, batch_size = batch_size, drop_last = False,
+        num_workers=num_workers
+    )   #Drop samples out of the batch size
 
 def get_process_memory_mb():
     process = psutil.Process(os.getpid())
@@ -57,7 +60,7 @@ def get_model_memory_mb(model):
     return param_bytes / 1024 / 1024
 
 # Define the inference function with profiling for both CPU and GPU memory usage
-def inference(model, dataloader, real_redshift, device, batch_size):
+def inference(model, dataloader, num_samples, device, batch_size):
     total_time = 0.0  # Initialize total time for execution
     num_batches = 0   # Initialize number of batches
     total_data_bits = 0  # Initialize total data bits processed
@@ -78,8 +81,6 @@ def inference(model, dataloader, real_redshift, device, batch_size):
             image_bits = image.element_size() * image.nelement() * 8  # Convert bytes to bits
             magnitude_bits = magnitude.element_size() * magnitude.nelement() * 8  # Convert bytes to bits
             total_data_bits += image_bits + magnitude_bits  # Add data bits for this batch
-
-    num_samples = len(real_redshift)
     
     # Extract total CPU and GPU time
     total_time = time.perf_counter() - start 
@@ -106,7 +107,10 @@ def engine(args):
     data = load_data(args.data_path, args.device)
     dataloader = data_loader(data, args.batch_size)
     model = load_model(args.model_path, args.device)
-    inference(model, dataloader, data[:][2].to('cpu'), device = args.device, batch_size = args.batch_size)
+    inference(
+        model, dataloader, len(data[:][2]), device = args.device, 
+        batch_size = args.batch_size
+    )
 
     
 # Pathes and other inference hyperparameters can be adjusted below

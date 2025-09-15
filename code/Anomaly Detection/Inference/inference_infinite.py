@@ -12,40 +12,6 @@ import psutil, gc, os
 import time, platform
 from inference import get_cpu_info, get_ram_info
 
-# %% [markdown]
-# ## Utils
-
-# %% [markdown]
-# ### Performance
-
-# %%
-# def get_cpu_info():
-#     # CPU Information
-#     print("CPU Information:")
-#     print(f"Processor: {platform.processor()}")
-#     print(f"Architecture: {platform.architecture()}")
-#     print(f"System: {platform.system()}")
-#     print(f"Platform: {platform.platform()}")
-
-#     return {
-#         'processor': platform.processor(),
-#         'architecture': platform.architecture(),
-#         'system': platform.system(),
-#         'platform': platform.platform()
-#     }
-
-# # RAM Information
-# def get_ram_info():
-#     if hasattr(os, 'sysconf'):
-#         if 'SC_PAGE_SIZE' in os.sysconf_names and 'SC_PHYS_PAGES' in os.sysconf_names:
-#             page_size = os.sysconf('SC_PAGE_SIZE')  # in bytes
-#             total_pages = os.sysconf('SC_PHYS_PAGES')
-#             total_ram = page_size * total_pages  # in bytes
-#             total_ram_gb = total_ram / (1024 ** 3)  # convert to GB
-#             print(f"Total memory (GB): {total_ram_gb:.2f}")
-#             return total_ram_gb
-#     return None
-
 #Load Data
 def load_data(data_path, device):
     return torch.load(data_path, map_location = device, weights_only=False)
@@ -207,7 +173,7 @@ def inference(
 
     # result jsons will be saved in this folder
     if not os.path.exists(device):
-        os.makedirs(device, exist=ok)
+        os.makedirs(device, exist_ok=True)
 
     # %%
     dataloader = DataLoader(

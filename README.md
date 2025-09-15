@@ -193,5 +193,5 @@ We extend the inference scaling beyond the 12.6GB limit using an Infinite datalo
 
 #### Fig 6: Data size vs Inference Time at Large Scale (till 1TB) using CPU.
 
-<img src='./code/Anomaly Detection/Inference/outputs/cpu.jpg' width='70%' style="{align:center}"/>
+<img src='./code/Anomaly Detection/Plots/cpu.jpg' width='70%' style="{align:center}"/>
 </div>
