@@ -36,6 +36,7 @@ def main(job_id):
         return
 
     lines = result.stdout.strip().split('\n')
+    lines = [line for line in lines if '.batch' not in line]
     
     min_start_time = None
     max_end_time = None
