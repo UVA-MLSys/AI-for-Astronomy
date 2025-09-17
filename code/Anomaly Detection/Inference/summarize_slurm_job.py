@@ -76,7 +76,7 @@ def main(job_id):
         print(f'Warning !! {OOM} Out of memory errors detected.')
 
     if completed_jobs != len(lines):
-        print(f'{completed_jobs//2} among {len(lines)//2} jobs are completed.') # same job appears as 'job_no' and 'job_no.batch', hence //2
+        print(f'{completed_jobs} among {len(lines)} jobs are completed.') # same job appears as 'job_no' and 'job_no.batch', hence //2
 
     # 1. Manually calculate the wall time based on your definition
     calculated_duration = max_end_time - min_start_time

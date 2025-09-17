@@ -61,7 +61,7 @@ def engine(args):
     
     all_job_stats = []
     for file_idx in args.file_indices:
-        filename = available_files[file_idx // len(available_files)]
+        filename = available_files[file_idx % len(available_files)]
         data_path =  os.path.join(args.data_dir, filename)
         print(f"--- Processing file index: {file_idx} at path: {data_path} ---")
         
