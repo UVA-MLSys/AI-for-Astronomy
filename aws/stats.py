@@ -106,6 +106,12 @@ def average_varying_data_size(data_sizes, runs):
                         results['data (GB)'] = 12.6
                     elif data_size == 'total100GB':
                         results['data (GB)'] = 100
+                    elif data_size == 'total256GB':
+                        results['data (GB)'] = 256
+                    elif data_size == 'total512GB':
+                        results['data (GB)'] = 512
+                    elif data_size == 'total768GB':
+                        results['data (GB)'] = 768
                     elif  data_size == 'total1000GB':
                         results['data (GB)'] = 1000
                     else: results['data (GB)'] = float(data_size.replace('GB', ''))
@@ -180,7 +186,7 @@ def adjust_throughput_batch_varying():
 if __name__ == '__main__':
     partitions = [25, 50, 75, 100] # in MB
     data_sizes = ['1GB', '2GB', '4GB', '6GB', '8GB', '10GB', 'total', 'total100GB',
-                  'total1000GB']
+                  'total256GB', 'total512GB', 'total768GB',  'total1000GB']
     runs = 3
     batch_sizes = [32, 64, 128, 256, 512]
     
