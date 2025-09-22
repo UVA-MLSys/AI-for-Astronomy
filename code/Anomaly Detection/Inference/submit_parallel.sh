@@ -55,7 +55,7 @@ fi
 echo "Using ${NUM_WORKERS} workers for the PyTorch DataLoader."
 
 # --- NEW: Define output filename as a variable ---
-OUTPUT_JSON_FILE="results/1024GB_96/1/job_${SLURM_ARRAY_TASK_ID}.json"
+OUTPUT_JSON_FILE="results/1024GB/3/job_${SLURM_ARRAY_TASK_ID}.json"
 
 # --- Execute the Python script ---
 python inference_parallel.py \
@@ -82,6 +82,7 @@ echo "Job array task ${SLURM_ARRAY_TASK_ID} finished."
 
 # 100 GB, note that Rivanna will max run 96 cores for a user at a time
 # sbatch --array=1-1024 submit_parallel.sh 1024 1
+# sbatch --array=1-256 submit_parallel.sh 1024 4
 
 # 256GB data with 256 cores
 # sbatch --array=1-239 submit_parallel.sh 2622 11
@@ -95,3 +96,4 @@ echo "Job array task ${SLURM_ARRAY_TASK_ID} finished."
 
 # 1024 GB or 1TB data with 96 cores in parallel. So each gets 106.7 files
 # sbatch --array=1-96 submit_parallel.sh 10240 107
+# sbatch --array=1-256 submit_parallel.sh 10240 40
