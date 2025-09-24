@@ -4,10 +4,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
-#SBATCH --time=01:10:00
+#SBATCH --time=00:05:00
+#SBATCH --partition=standard
 #SBATCH --account=mlsys
-#SBATCH --partition=standard # Adjust partition as needed, e.g., gpu, standard, etc.
+#SBATCH --mem=3G
 #SBATCH --output=outputs/cpu_%A_%a.out
 #---SBATCH --mail-type=begin,end
 #---SBATCH --mail-user=mi3se@virginia.edu

@@ -44,24 +44,60 @@ def inference(
             'batch_size': batch_size,   # Batch size
             'device': device,   # Selected device
         }
-  
+ 
     avg_time_batch = total_time / num_batches
 
     # Average execution time per batch
     execution_info['execution_time_per_batch'] = avg_time_batch
     # Throughput in bits per second (using total_time for all batches)
     execution_info['throughput_bps'] = total_data_bits / total_time
-    execution_info['sample_persec'] = num_samples / total_time,  # Number of samples processed per second
+    execution_info['sample_persec'] = num_samples / total_time,   # Number of samples processed per second
     return execution_info
 
 #This is the engine module for invoking and calling various modules
 def engine(args):
+    # --- NEW: Workload distribution logic moved to Python ---
+    total_files = args.total_files
+    # Get task ID and total tasks directly from environment variables set by Slurm
+    # This is more reliable than using argparse for these values
+    try:
+        task_id = int(os.environ['SLURM_PROCID'])
+        total_tasks = int(os.environ['SLURM_NTASKS'])
+    except KeyError:
+        print("Warning: SLURM environment variables not found. Defaulting to serial run.")
+        task_id = 0
+        total_tasks = 1
+
+    print(f"Starting task id {task_id} of {total_tasks}...")
+
+    files_per_task = total_files // total_tasks
+    remainder = total_files % total_tasks
+
+    start_index = task_id * files_per_task
+    if task_id < remainder:
+        start_index += task_id
+    else:
+        start_index += remainder
+
+    end_index = start_index + files_per_task
+    if task_id < remainder:
+        end_index += 1
+
+    file_indices = range(start_index, end_index)
+    # --- END of Workload distribution logic ---
+
     model = load_model(args.model_path, args.device)
-    available_files = os.listdir(args.data_dir)
+    available_files = sorted(os.listdir(args.data_dir)) # Sort the file list to ensure consistent indexing
+    N = len(available_files)
     
     all_job_stats = []
-    for file_idx in args.file_indices:
-        filename = available_files[file_idx % len(available_files)]
+    for file_idx in file_indices:
+        # Check if the file index is valid
+        # if file_idx >= len(available_files):
+        #     print(f"Warning: File index {file_idx} is out of bounds. Skipping.")
+        #     continue
+            
+        filename = available_files[file_idx % N] # reuse files, so that we can extend the dataset beyond its original size limit
         data_path =  os.path.join(args.data_dir, filename)
         print(f"--- Processing file index: {file_idx} at path: {data_path} ---")
         
@@ -83,10 +119,13 @@ def engine(args):
             "stats": file_stats
         })
 
-    # Save aggregated results for this job
-    print(f"Saving aggregated results to {args.output_file}")
-    os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
-    with open(args.output_file, 'w') as f:
+    # Save aggregated results for this job to a unique file name
+    output_dir = args.output_dir
+    output_filename = os.path.join(output_dir, f'job_{task_id}.json')
+    print(f"Saving aggregated results to {output_filename}")
+
+    os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+    with open(output_filename, 'w') as f:
         json.dump(all_job_stats, f, indent=4)
 
     
@@ -98,16 +137,15 @@ if __name__ == '__main__':
     # NEW: Directory containing the .pt files
     parser.add_argument('--data_dir', type=str, default='../../../raw_data/100MB')
     
-    # NEW: List of file indices to process
-    parser.add_argument('--file_indices', type=int, nargs='+', required=True, help='Space-separated list of file indices to process.')
-    
-    # NEW: Path for the output JSON file
-    parser.add_argument('--output_file', type=str, required=True, help='Path to save the output JSON file for this job.')
+    parser.add_argument('--output_dir', type=str, required=True, help='Directory to save the output JSON file for this job.')
 
     parser.add_argument('--model_path', type = str, default  = '../Fine_Tune_Model/Mixed_Inception_z_VITAE_Base_Img_Full_New_Full.pt')
-    parser.add_argument('--device', type = str, default = 'cpu', choices=['cpu', 'cuda'])    # To run on GPU, put cuda, and on CPU put cpu
+    parser.add_argument('--device', type = str, default = 'cpu', choices=['cpu', 'cuda'])     # To run on GPU, put cuda, and on CPU put cpu
     parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument('--disable_progress', action='store_true', default=False)
+    
+    # --- NEW: Arguments for concurrent jobs ---
+    parser.add_argument('--total_files', type=int, required=True)
 
     args = parser.parse_args()
 
