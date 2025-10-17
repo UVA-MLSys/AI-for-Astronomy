@@ -1,8 +1,8 @@
 <img width="820" alt="image" src="https://github.com/user-attachments/assets/36c6591b-0877-4142-b238-a2a0e971aef8">
 
-# Cloud-based Astronomy Inference (CAI)
+# [Scalable Cosmic AI Inference using Cloud Serverless Computing](https://arxiv.org/pdf/2501.06249?)
 
-This proposes a novel **Cloud-based Astronomy Inference (CAI)** framework for data parallel AI model inference on AWS. We can classify 500K astronomy images using the AstroMAE model in a minute ! 
+This proposes a novel **Cloud-based Astronomy Inference (CAI)** framework for data parallel AI model inference on AWS. We can classify 500K astronomy images using the AstroMAE model in a minute !
 
 <div align="center" style="overflow-x:auto;">
 
@@ -10,6 +10,19 @@ This proposes a novel **Cloud-based Astronomy Inference (CAI)** framework for da
 
 <img src='./aws/figures/cai workflow.jpg' width='50%'/>
 </div>
+
+## Citation
+
+```bib
+@article{staylor2025scalable,
+  title={Scalable Cosmic AI Inference using Cloud Serverless Computing with FMI},
+  author={Staylor, Mills and Fathkouhi, Amirreza Dolatpour and Islam, Md Khairul and O'Hara, Kaleigh and Goudjil, Ryan Ghiles and Fox, Geoffrey and Fox, Judy},
+  journal={arXiv preprint arXiv:2501.06249},
+  year={2025}
+}
+```
+
+## Overview
 
 A brief description of the workflow:
 
