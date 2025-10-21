@@ -1,1 +1,1 @@
-batch_size,run,total_cpu_time (seconds),total_cpu_memory (MB),throughput_bps,total_bits,num_worlds,total_duration (s),inference_duration (s)
+batch_size,run,total_cpu_time (seconds),total_cpu_memory (MB),throughput_bps,total_bits,total_duration (s),inference_duration (s)
