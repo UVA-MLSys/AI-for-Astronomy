@@ -7,12 +7,54 @@ from torch.utils.data import TensorDataset
 import boto3
 from botocore.exceptions import ClientError
 import logging
-import os, gc 
+import os, gc
 from torch.profiler import profile, ProfilerActivity
 import json, platform, io
 import numpy as np
+import time
 
+# S3 request/response timing tracker
+class S3TimingTracker:
+    def __init__(self):
+        self.request_times = []
+        self.response_times = []
+        self.current_request_time = None
+
+    def record_request(self, **kwargs):
+        self.current_request_time = time.time()
+
+    def record_response(self, **kwargs):
+        if self.current_request_time is not None:
+            response_time = time.time()
+            request_duration = response_time - self.current_request_time
+            self.request_times.append(self.current_request_time)
+            self.response_times.append(response_time)
+            self.current_request_time = None
+
+    def get_stats(self):
+        if not self.request_times:
+            return {}
+
+        durations = [self.response_times[i] - self.request_times[i]
+                    for i in range(len(self.request_times))]
+
+        return {
+            's3_num_requests': len(self.request_times),
+            's3_total_time': sum(durations),
+            's3_avg_time': sum(durations) / len(durations),
+            's3_min_time': min(durations),
+            's3_max_time': max(durations),
+            's3_first_request_time': self.request_times[0] if self.request_times else None,
+            's3_last_response_time': self.response_times[-1] if self.response_times else None
+        }
+
+# Initialize S3 client and timing tracker
+s3_timing = S3TimingTracker()
 s3_client = boto3.client('s3')
+
+# Register event handlers to track request/response times
+s3_client.meta.events.register('before-call', s3_timing.record_request)
+s3_client.meta.events.register('after-call', s3_timing.record_response)
 
 def get_cpu_info():
     # CPU Information
@@ -138,7 +180,7 @@ def inference(
     avg_time_batch = total_time / (num_samples / batch_size)
 
     logging.info(f'Rank: {rank}. End Inference. Total time: {total_time}. Avg time per batch: {avg_time_batch}.')
-    
+
     execution_info = {
         'total_cpu_time (seconds)': total_time,
         'total_cpu_memory (MB)': total_cpu_memory,
@@ -151,7 +193,12 @@ def inference(
         'result_path': result_path,
         'data_path': data_path
     }
-    
+
+    # Get S3 timing statistics (before put_object, so we capture get_object and download_fileobj but not this final put)
+    s3_stats = s3_timing.get_stats()
+    # Add S3 timing statistics as top-level fields
+    execution_info.update(s3_stats)
+
     s3_client.put_object(
         Bucket=args.data_bucket,
         Key=f'{result_path}/{rank}.json',
@@ -267,7 +314,7 @@ if __name__ == '__main__':
     
     # TODO: get it from state-input
     # get the result path
-    obj = s3_client.get_object(Bucket='cosmicai-data', Key='payload.json')
+    obj = s3_client.get_object(Bucket='cosmicai-data-cylon', Key='payload.json')
     file_content = obj["Body"].read().decode("utf-8")
     config = json.loads(file_content)
     
