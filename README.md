@@ -2,6 +2,10 @@
 
 # [Scalable Cosmic AI Inference using Cloud Serverless Computing](https://arxiv.org/pdf/2501.06249?)
 
+Large-scale astronomical image data processing and prediction are essential for astronomers, providing crucial insights into celestial objects, the universe’s history, and its evolution. While modern deep learning models offer high predictive accuracy, they often demand substantial computational resources, making them resource-intensive and limiting accessibility. We introduce the Cloud-based Astronomy Inference (CAI) framework to address these challenges. This scalable solution integrates pre-trained foundation models with serverless cloud infrastructure through a Function-as-a-Service (FaaS). CAI enables efficient and scalable inference on astronomical images without extensive hardware. Using a foundation model for redshift prediction as a case study, our extensive experiments cover user devices, HPC (High-Performance Computing) servers, and Cloud. Using redshift prediction with the AstroMAE model demonstrated CAI’s scalability and efficiency, achieving inference on a 12.6 GB dataset in only 28 seconds compared to 140.8 seconds on HPC GPUs and 1793 seconds on HPC CPUs. CAI also achieved significantly higher throughput, reaching 18.04 billion bits per second (bps), and maintained near-constant inference times as data sizes increased, all at minimal computational cost (under $5 per experiment). We also process large-scale data up to 1 TB to show CAI’s effectiveness at scale. CAI thus provides a highly scalable, accessible, and cost-effective inference solution for the astronomy community.
+
+-------
+
 This proposes a novel **Cloud-based Astronomy Inference (CAI)** framework for data parallel AI model inference on AWS. We can classify 500K astronomy images using the AstroMAE model in a minute !
 
 <div align="center" style="overflow-x:auto;">
