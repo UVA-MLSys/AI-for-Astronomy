@@ -20,7 +20,7 @@ This proposes a novel **Cloud-based Astronomy Inference (CAI)** framework for da
 ```bib
 @article{staylor2025scalable,
   title={Scalable Cosmic AI Inference using Cloud Serverless Computing with FMI},
-  author={Staylor, Mills; Fathkouhi, Amirreza Dolatpour; Islam, Md Khairul; O'Hara, Kaleigh; Goudjil, Ryan Ghiles; Fox, Geoffrey; Fox, Judy},
+  author={Staylor, Mills; Fathkouhi, Amirreza; Islam, Khairul; O'Hara, Kaleigh; Goudjil, Ryan; Fox, Geoffrey; Fox, Judy},
   journal={arXiv preprint arXiv:2501.06249},
   year={2025}
 }
