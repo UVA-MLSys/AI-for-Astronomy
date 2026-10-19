@@ -1,9 +1,24 @@
-import json, os
+import argparse, json, os
 import pandas as pd
 import numpy as np
 
 # sync aws and local folders
 # aws s3 sync s3://cosmicai-data/result-partition-100MB result-partition-100MB
+
+DATA_SIZE_GB = {
+    'total': 12.6,
+    'timing': 12.6,
+    'total100GB': 100,
+    'total256GB': 256,
+    'total512GB': 512,
+    'total768GB': 768,
+    'total1000GB': 1000,
+}
+
+def data_size_in_gb(data_size):
+    if data_size in DATA_SIZE_GB:
+        return DATA_SIZE_GB[data_size]
+    return float(data_size.replace('GB', ''))
 
 def remove_outliers_and_mean(data, threshold=1.5):
     """
@@ -28,7 +43,7 @@ def remove_outliers_and_mean(data, threshold=1.5):
 
     return np.mean(filtered_data)
 
-def average_varying_batch_size(batch_sizes, runs):
+def average_varying_batch_size(batch_sizes, runs, results_dir):
     all_results = []
 
     keys = ['total_cpu_time (seconds)', "total_cpu_memory (MB)", "throughput_bps"]
@@ -97,16 +112,15 @@ def average_varying_batch_size(batch_sizes, runs):
     all_results = pd.concat([all_results, mean], axis=0)
     all_results.sort_values([column_name, 'run'], inplace=True)
 
-    filename = './results/batch_varying_results.csv'
+    filename = os.path.join(results_dir, 'batch_varying_results.csv')
     all_results.round(2).to_csv(filename, index=False)
     print(f"Results saved to {filename}")
 
-def average_varying_data_size(data_sizes, runs):
+def average_varying_data_size(data_sizes, partitions, runs, results_dir):
     all_results = []
 
     keys = ['total_cpu_time (seconds)', "total_cpu_memory (MB)", "throughput_bps"]
     s3_keys = ['s3_total_time', 's3_avg_time', 's3_min_time', 's3_max_time']
-    partitions = [25, 50, 75, 100] # in MB
 
     for partition in partitions:
         for data_size in data_sizes:
@@ -136,21 +150,7 @@ def average_varying_data_size(data_sizes, runs):
                     results['partition (MB)'] = partition
                     results['run'] = run
 
-                    if data_size == 'total':
-                        results['data (GB)'] = 12.6
-                    elif data_size == 'total100GB':
-                        results['data (GB)'] = 100
-                    elif data_size == 'total256GB':
-                        results['data (GB)'] = 256
-                    elif data_size == 'total512GB':
-                        results['data (GB)'] = 512
-                    elif data_size == 'total768GB':
-                        results['data (GB)'] = 768
-                    elif data_size == 'total1000GB':
-                        results['data (GB)'] = 1000
-                    elif data_size == 'timing':
-                        results['data (GB)'] = 12.6  # Adjust this to the actual data size for timing runs
-                    else: results['data (GB)'] = float(data_size.replace('GB', ''))
+                    results['data (GB)'] = data_size_in_gb(data_size)
 
                     if not s3_df.empty:
                         for col in s3_df.columns:
@@ -187,13 +187,13 @@ def average_varying_data_size(data_sizes, runs):
     all_results = pd.concat([all_results, mean], axis=0)
     all_results.sort_values(['partition (MB)', 'data (GB)', 'run'], inplace=True)
 
-    filename = './results/result_stats.csv'
+    filename = os.path.join(results_dir, 'result_stats.csv')
     all_results.round(2).to_csv(filename, index=False)
     print(f'File saved at {filename}')
-    
-def adjust_throughput_stats():
-    result_stats = pd.read_csv('./results/result_stats.csv')
-    state_logs = pd.read_csv('./results/state_machine_logs.csv')
+
+def adjust_throughput_stats(results_dir):
+    result_stats = pd.read_csv(os.path.join(results_dir, 'result_stats.csv'))
+    state_logs = pd.read_csv(os.path.join(results_dir, 'state_machine_logs.csv'))
 
     # Convert merge key columns to consistent types
     state_logs['run'] = state_logs['run'].astype(str)
@@ -241,11 +241,11 @@ def adjust_throughput_stats():
     avg.insert(2, 'run', 'mean')
     df = pd.concat([df, avg], axis=0)
     df.sort_values(by=['partition (MB)', 'data (GB)', 'run'], inplace=True)
-    df.round(2).to_csv('./results/result_stats_adjusted.csv', index=False)
-    
-def adjust_throughput_batch_varying():
-    result_stats = pd.read_csv('./results/batch_varying_results.csv')
-    state_logs = pd.read_csv('./results/state_machine_logs.csv')
+    df.round(2).to_csv(os.path.join(results_dir, 'result_stats_adjusted.csv'), index=False)
+
+def adjust_throughput_batch_varying(results_dir):
+    result_stats = pd.read_csv(os.path.join(results_dir, 'batch_varying_results.csv'))
+    state_logs = pd.read_csv(os.path.join(results_dir, 'state_machine_logs.csv'))
 
     # Convert merge key columns to consistent types
     state_logs['run'] = state_logs['run'].astype(str)
@@ -278,18 +278,28 @@ def adjust_throughput_batch_varying():
     avg.insert(1, 'run', 'mean')
     df = pd.concat([df, avg], axis=0)
     df.sort_values(by=['batch_size', 'run'], inplace=True)
-    df.round(2).to_csv('./results/batch_varying_adjusted.csv', index=False)
+    df.round(2).to_csv(os.path.join(results_dir, 'batch_varying_adjusted.csv'), index=False)
 
 if __name__ == '__main__':
-    partitions = [25, 50, 75, 100] # in MB
-    data_sizes = ['1GB', '2GB', '4GB', '6GB', '8GB', '10GB', 'total', 'total100GB',
-                  'total256GB', 'total512GB', 'total768GB',  'total1000GB', 'timing']
-    runs = 3
-    batch_sizes = [32, 64, 128, 256, 512]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data-sizes', nargs='+',
+                        default=['1GB', '2GB', '4GB', '6GB', '8GB', '10GB', 'total'])
+    parser.add_argument('--partitions', nargs='+', type=int, default=[25, 50, 75, 100],
+                        help='partition sizes in MB')
+    parser.add_argument('--runs', type=int, default=3)
+    parser.add_argument('--batch-sizes', nargs='*', type=int, default=[32, 64, 128, 256, 512],
+                        help='pass with no values to skip the batch size sweep')
+    parser.add_argument('--results-dir', default='./results')
+    args = parser.parse_args()
 
-    average_varying_batch_size(batch_sizes, runs)
-    adjust_throughput_batch_varying()
+    data_sizes_gb = [data_size_in_gb(data_size) for data_size in args.data_sizes]
+    if len(set(data_sizes_gb)) != len(data_sizes_gb):
+        parser.error(f'--data-sizes {args.data_sizes} map to duplicate data (GB) values {data_sizes_gb}')
 
-    average_varying_data_size(data_sizes, runs)
-    adjust_throughput_stats()
+    if args.batch_sizes:
+        average_varying_batch_size(args.batch_sizes, args.runs, args.results_dir)
+        adjust_throughput_batch_varying(args.results_dir)
+
+    average_varying_data_size(args.data_sizes, args.partitions, args.runs, args.results_dir)
+    adjust_throughput_stats(args.results_dir)
     

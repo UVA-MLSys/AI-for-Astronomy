@@ -22,6 +22,7 @@ class S3TimingTracker:
 
     def record_request(self, **kwargs):
         self.current_request_time = time.time()
+        logging.debug(f'S3 request recorded at {self.current_request_time}')
 
     def record_response(self, **kwargs):
         if self.current_request_time is not None:
@@ -30,6 +31,7 @@ class S3TimingTracker:
             self.request_times.append(self.current_request_time)
             self.response_times.append(response_time)
             self.current_request_time = None
+            logging.debug(f'S3 response recorded, duration: {request_duration}s')
 
     def get_stats(self):
         if not self.request_times:
@@ -55,6 +57,7 @@ s3_client = boto3.client('s3')
 # Register event handlers to track request/response times
 s3_client.meta.events.register('before-call', s3_timing.record_request)
 s3_client.meta.events.register('after-call', s3_timing.record_response)
+logging.info(f'S3 event handlers registered')
 
 def get_cpu_info():
     # CPU Information
@@ -122,6 +125,25 @@ def environ_or_required(key, default = None, required=True):
             else {'default': default}
 
         )
+STAGE_FIELDS = (
+    'code_fetch_s', 'init_s', 'comm_init_s', 'payload_fetch_s', 'scatter_s', 'model_load_s',
+    'inference_s', 'barrier_s', 'publish_s', 'total_s',
+)
+
+
+def startup_timings(process_start_ts):
+    lambda_entry_ts = os.environ.get('LAMBDA_ENTRY_TS')
+    code_fetch_end_ts = os.environ.get('CODE_FETCH_END_TS')
+    if lambda_entry_ts is None:
+        return {'code_fetch_s': None, 'init_s': None}
+    if code_fetch_end_ts is None:
+        return {'code_fetch_s': None, 'init_s': process_start_ts - float(lambda_entry_ts)}
+    return {
+        'code_fetch_s': float(code_fetch_end_ts) - float(lambda_entry_ts),
+        'init_s': process_start_ts - float(code_fetch_end_ts),
+    }
+
+
 # Load Data
 def load_data(data_path, device):
     return torch.load(data_path, map_location=device)
@@ -137,10 +159,7 @@ def data_loader(data, batch_size):
 
 
 #Iterate over data for predicting the redshift and invoke the evaluation modules
-def inference(
-    model, dataloader, device, batch_size, 
-    rank, result_path, data_path, args
-):
+def run_inference(model, dataloader, device, batch_size, rank, result_path, data_path):
     total_time = 0.0  # Initialize total time for execution
     num_batches = 0  # Initialize number of batches
     total_data_bits = 0  # Initialize total data bits processed
@@ -152,6 +171,7 @@ def inference(
         profile_memory=True
     ) as prof:
         with torch.no_grad():
+            t_inference_start = time.time()
             for i, data in enumerate(dataloader):
                 image = data[0].to(device)  #Image is permuted, cropped and moved to cuda
                 magnitude = data[1].to(device)  #magnitude of of channels
@@ -166,6 +186,7 @@ def inference(
                 num_batches += 1
                 num_samples += len(image)
                 gc.collect()
+            inference_wall_s = time.time() - t_inference_start
 
     # num_samples = num_batches * batch_size
 
@@ -198,14 +219,56 @@ def inference(
     s3_stats = s3_timing.get_stats()
     # Add S3 timing statistics as top-level fields
     execution_info.update(s3_stats)
+    logging.info(f'Rank: {rank}. S3 stats: {s3_stats}')
+    logging.info(f'Rank: {rank}. S3 request count: {len(s3_timing.request_times)}')
+    logging.info(f'Rank: {rank}. S3 response count: {len(s3_timing.response_times)}')
 
+    execution_info['num_samples'] = num_samples
+    execution_info['inference_s'] = inference_wall_s
+    return execution_info
+
+
+def inference(
+    model, dataloader, device, batch_size,
+    rank, result_path, data_path, args, stage_timings=None
+):
+    execution_info = run_inference(model, dataloader, device, batch_size, rank, result_path, data_path)
+
+    stage_timings = dict(stage_timings or {})
+    process_start_ts = stage_timings.pop('process_start_ts', None)
+    execution_info['code_fetch_s'] = stage_timings.get('code_fetch_s')
+    execution_info['init_s'] = stage_timings.get('init_s')
+    execution_info['payload_fetch_s'] = stage_timings.get('payload_fetch_s')
+    execution_info['scatter_s'] = stage_timings.get('scatter_s')
+    execution_info['model_load_s'] = stage_timings.get('model_load_s')
+    execution_info['comm_init_s'] = 0.0
+    execution_info['barrier_s'] = 0.0
+    execution_info['publish_s'] = None
+    execution_info['total_s'] = None
+
+    result_key = f'{result_path}/{rank}.json'
+
+    t_publish_start = time.time()
     s3_client.put_object(
         Bucket=args.data_bucket,
-        Key=f'{result_path}/{rank}.json',
+        Key=result_key,
         Body=json.dumps(execution_info),
         ContentType="application/json"
     )
-    
+    publish_s = time.time() - t_publish_start
+    logging.info(f'Rank: {rank}. publish_s: {publish_s}')
+
+    execution_info['publish_s'] = publish_s
+    execution_info['total_s'] = (
+        time.time() - process_start_ts if process_start_ts is not None else None
+    )
+    s3_client.put_object(
+        Bucket=args.data_bucket,
+        Key=result_key,
+        Body=json.dumps(execution_info),
+        ContentType="application/json"
+    )
+
     # with open('Results.json', 'w') as json_file:
     #     json.dump(execution_info, json_file, indent=4)
 
@@ -266,26 +329,38 @@ def partition_data(data, rank, world_size):
     
     return data
 
-#This is the engine module for invoking and calling various modules
-def engine(args):
+def load_partition_and_model(args, stage_timings):
+    t_scatter_start = time.time()
     data = load_data(
         data_path=args.data_path, bucket=args.data_bucket
     )
-    
+    stage_timings['scatter_s'] = time.time() - t_scatter_start
+
     dataloader = DataLoader(
         data, batch_size=args.batch_size #, drop_last=True
     ) # data_loader(data, args.batch_size)
+    t_model_load_start = time.time()
     model = load_model(args.model_path, args.device)
-    
+    stage_timings['model_load_s'] = time.time() - t_model_load_start
+    return dataloader, model
+
+
+#This is the engine module for invoking and calling various modules
+def engine(args, stage_timings=None):
+    stage_timings = dict(stage_timings or {})
+    dataloader, model = load_partition_and_model(args, stage_timings)
+
     inference(
         model, dataloader,
         device=args.device, batch_size=args.batch_size,
-        rank=args.rank, result_path=args.result_path, 
-        data_path=args.data_path, args=args
+        rank=args.rank, result_path=args.result_path,
+        data_path=args.data_path, args=args, stage_timings=stage_timings
     )
 
 # Pathes and other inference hyperparameters can be adjusted below
 if __name__ == '__main__':
+    process_start_ts = time.time()
+
     prj_dir = '/tmp/Anomaly Detection/'  #adjust based on your system's directory
     parser = argparse.ArgumentParser()
     # parser.add_argument(
@@ -314,17 +389,23 @@ if __name__ == '__main__':
     
     # TODO: get it from state-input
     # get the result path
+    t_payload_fetch_start = time.time()
     obj = s3_client.get_object(Bucket='cosmicai-data-cylon', Key='payload.json')
     file_content = obj["Body"].read().decode("utf-8")
     config = json.loads(file_content)
-    
+    payload_fetch_s = time.time() - t_payload_fetch_start
+
     args.batch_size = int(config['batch_size'])
     args.data_bucket = config['data_bucket']
     args.data_path = config['data_map'][str(args.rank)] # f'{args.rank+1}.pt'
     args.result_path = config['result_path']
-    
+
     if args.data_path is None:
         logging.info(f'Rank: {args.rank}. Data path is not specified. Exiting.')
         sys.exit(0)
 
-    engine(args)
+    engine(args, stage_timings={
+        'process_start_ts': process_start_ts,
+        **startup_timings(process_start_ts),
+        'payload_fetch_s': payload_fetch_s,
+    })

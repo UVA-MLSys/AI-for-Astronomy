@@ -1,130 +1,97 @@
-import json, boto3
-import os, logging, ctypes,socket
+import json
+import logging
+import uuid
+
+import boto3
+
+from initializer import assign_partitions, get_file_list
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 s3_client = boto3.client('s3')
 
-class PeerConnectionData(ctypes.Structure):
-    _fields_ = [
-        ("ip", ctypes.c_uint32),  # IPv4 address
-        ("port", ctypes.c_uint16)
-    ]
+REQUIRED_FIELDS = (
+    'bucket', 'object_type', 'script', 'S3_object_name', 'result_path', 'file_limit',
+    'batch_size', 'data_bucket', 'data_prefix',
+    'fmi_channel_type', 'fmi_options', 'fmi_max_timeout', 'rendezvous_host', 'rendezvous_port',
+)
 
-def get_ith_filename(i):
-    return f'{i+1}.pt'
 
-def get_file_list(bucket, prefix):
-    response = s3_client.list_objects_v2(
-        Bucket=bucket, Prefix=prefix
-    )
-    # Check if files exist in the specified location
-    if "Contents" not in response:
-        logger.error("Inference: No files found in the specified S3 bucket or prefix.")
-        return []
+class InvalidFMIEvent(ValueError):
+    pass
 
-    filenames = []
-    # Loop over each object in the response
-    for item in response["Contents"]:
-        file_key = item["Key"]
-        
-        # Only process pt files
-        if file_key.endswith(".pt"):
-            filenames.append(file_key)
 
-    # consistency checking
-    for i in range(len(filenames)):
-        filename = get_ith_filename(i)
-        if filename in filenames: continue
-        logging.error(f'{filename} is missing.')
-    
-    return filenames
+def validate_event(event):
+    missing = [field for field in REQUIRED_FIELDS if event.get(field) in (None, '')]
+    if missing:
+        raise InvalidFMIEvent(f'Arm B execution input is missing {missing} (result_path={event.get("result_path")})')
 
-def ceil(a, b): 
-    return (a+b-1) // b
-    
+
 def lambda_handler(event, context):
-    print("receiving event: ", event)
-    
-    comSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    comSocket.connect(("rendezvous.uva-ds5110.com", 10000))
+    validate_event(event)
 
-    print("renzdezvous connection successful!")
-    
-    #byteString = bytes("delete_pairs", 'utf-8')
-    #comSocket.sendall(byteString)
-    
-    comSocket.close()
-    
-    
-    bucket = event["bucket"]
-    object_type = event["object_type"]
-    
-    script = event["script"]
-    S3_object_name = event["S3_object_name"]
+    bucket = event['bucket']
     result_path = event['result_path']
     file_limit = int(event['file_limit'])
-    batch_size = int(event['batch_size'])
+    world_size = int(event.get('world_size', file_limit))
+    event['world_size'] = world_size
+    comm_name = event.get('comm_name') or f'cosmic-fmi-{uuid.uuid4().hex}'
+    event['comm_name'] = comm_name
 
-    # if you want one task to handle multiple files
-    if "world_size" in event:
-        world_size = int(event["world_size"])
-    else: 
-        world_size = file_limit
-    
-    # partitioned data are physically located here
-    data_bucket = event['data_bucket'] # 'cosmicai-data'
-    data_bucket_prefix = event['data_prefix'] # ''
-    filenames = get_file_list(bucket=data_bucket, prefix=data_bucket_prefix)
-    filenames = filenames[:file_limit]
-    # logging.info(f'Files {filenames}')
-
-    result = []
-    # dict to store which rank will use which data partition
-    data_map = {}
-    start_index = 0
-    total_files = len(filenames)
-    for rank in range(0, int(world_size)):
-        if rank < total_files: 
-            # num files left / num of worlds left
-            step_size = ceil(total_files - start_index, world_size - rank)
-            # logging.info(f'Rank {rank}, start {start_index}, step size {step_size}.')
-
-            if step_size == 1:
-                data_path = filenames[start_index]
-            else: 
-                data_path = filenames[start_index:start_index+step_size]
-            start_index += step_size
-
-        else: data_path = None
-        data_map[rank] = data_path
-
-        payload = {
-            "S3_BUCKET": bucket,
-            "S3_OBJECT_NAME": S3_object_name,
-            "SCRIPT": script,
-            "S3_OBJECT_TYPE": object_type,
-            "WORLD_SIZE": str(world_size),
-            "RANK": str(rank),
-            "DATA_BUCKET": data_bucket,
-            "DATA_PREFIX": data_bucket_prefix,
-            "DATA_PATH": data_path,
-            "RESULT_PATH": result_path,
-            "BATCH_SIZE": batch_size
+    filenames = get_file_list(bucket=event['data_bucket'], prefix=event['data_prefix'])
+    if len(filenames) == 0:
+        return {
+            'statusCode': 404,
+            'body': 'No files found in the specified S3 bucket or prefix.'
         }
-        result.append(payload)
+    if file_limit > len(filenames):
+        file_limit = len(filenames)
+        event['file_limit'] = file_limit
+        logger.info(f'File limit is larger than the number of files. Set to {file_limit}.')
+    filenames = filenames[:file_limit]
 
-    event['data_map'] = data_map
-    # used by the container to know world settings
+    run_id = str(uuid.uuid4())
+    payload_key = f'temp-results/{run_id}-payload.json'
+    event['data_map'] = assign_partitions(filenames, world_size)
     s3_client.put_object(
-        Bucket=bucket,Key='payload.json',
-        Body=json.dumps(event, indent = 4),
-        ContentType="application/json"
+        Bucket=bucket, Key=payload_key,
+        Body=json.dumps(event, indent=4),
+        ContentType='application/json'
     )
-    
+
+    items = [
+        {
+            'S3_BUCKET': bucket,
+            'S3_OBJECT_NAME': event['S3_object_name'],
+            'SCRIPT': event['script'],
+            'S3_OBJECT_TYPE': event['object_type'],
+            'WORLD_SIZE': str(world_size),
+            'RANK': str(rank),
+            'DATA_BUCKET': event['data_bucket'],
+            'DATA_PREFIX': event['data_prefix'],
+            'RESULT_PATH': result_path,
+            'BATCH_SIZE': int(event['batch_size']),
+            'PAYLOAD_KEY': payload_key,
+            'FMI_COMM_NAME': comm_name,
+            'FMI_CHANNEL_TYPE': event['fmi_channel_type'],
+            'FMI_OPTIONS': event['fmi_options'],
+            'FMI_MAX_TIMEOUT': str(event['fmi_max_timeout']),
+            'RENDEZVOUS_HOST': event['rendezvous_host'],
+            'RENDEZVOUS_PORT': str(event['rendezvous_port']),
+        }
+        for rank in range(world_size)
+    ]
+    items_key = f'temp-results/{run_id}.json'
+    s3_client.put_object(
+        Bucket=bucket, Key=items_key,
+        Body=json.dumps(items, indent=4),
+        ContentType='application/json'
+    )
+
     return {
-        'statusCode': 404 if filenames is None else 200,
-        'body': result
+        'statusCode': 200,
+        'body': {
+            'S3_BUCKET': bucket,
+            'S3_KEY': items_key
+        }
     }
